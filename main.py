@@ -18,7 +18,7 @@ from linebot.v3.messaging import (
 from linebot.v3.webhooks import MessageEvent, TextMessageContent, ImageMessageContent
 from linebot.v3.exceptions import InvalidSignatureError
 
-from poster import bluesky, twitter, threads
+from poster import bluesky, twitter, threads, mastodon
 
 app = FastAPI()
 
@@ -49,6 +49,7 @@ async def broadcast(text: str, image_data: bytes | None = None) -> str:
         "Bluesky": "BLUESKY_HANDLE" in os.environ and os.environ.get("BLUESKY_HANDLE", ""),
         "X": "X_API_KEY" in os.environ and os.environ.get("X_API_KEY", ""),
         "Threads": "THREADS_ACCESS_TOKEN" in os.environ and os.environ.get("THREADS_ACCESS_TOKEN", ""),
+        "Mastodon": "MASTODON_ACCESS_TOKEN" in os.environ and os.environ.get("MASTODON_ACCESS_TOKEN", ""),
     }
 
     tasks = []
@@ -58,6 +59,8 @@ async def broadcast(text: str, image_data: bytes | None = None) -> str:
         tasks.append(("X", asyncio.to_thread(twitter.post, text, image_data)))
     if enabled["Threads"]:
         tasks.append(("Threads", asyncio.to_thread(threads.post, text, image_data)))
+    if enabled["Mastodon"]:
+        tasks.append(("Mastodon", asyncio.to_thread(mastodon.post, text, image_data)))
 
     results = []
     for name, coro in tasks:
