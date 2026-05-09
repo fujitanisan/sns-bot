@@ -1,7 +1,7 @@
 fastapi==0.111.0
 uvicorn==0.29.0
 line-bot-sdk==3.11.0
-atproto==0.0.54
+atproto==0.0.65
 tweepy==4.14.0
 requests==2.31.0
 python-dotenv==1.0.1
