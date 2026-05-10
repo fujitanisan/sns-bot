@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Response
 from linebot.v3 import WebhookHandler
 from linebot.v3.messaging import (
     AsyncApiClient,
@@ -19,6 +19,7 @@ from linebot.v3.webhooks import MessageEvent, TextMessageContent, ImageMessageCo
 from linebot.v3.exceptions import InvalidSignatureError
 
 from poster import bluesky, twitter, threads, mastodon
+import image_store
 
 app = FastAPI()
 
@@ -114,3 +115,11 @@ def handle_image(event: MessageEvent):
 @app.get("/")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/temp-image/{image_id}")
+def temp_image(image_id: str):
+    data, mime = image_store.get(image_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    return Response(content=data, media_type=mime)
