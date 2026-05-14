@@ -26,6 +26,9 @@ app = FastAPI()
 configuration = Configuration(access_token=os.environ["LINE_CHANNEL_ACCESS_TOKEN"])
 handler = WebhookHandler(os.environ["LINE_CHANNEL_SECRET"])
 
+# キャプション待機: { user_id: {"text": str, "task": asyncio.Task} }
+pending_captions: dict = {}
+
 
 async def reply(reply_token: str, text: str):
     async with AsyncApiClient(configuration) as api_client:
@@ -91,10 +94,25 @@ async def webhook(request: Request):
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_text(event: MessageEvent):
     text = event.message.text.strip()
+    user_id = event.source.user_id
+    reply_token = event.reply_token
+
+    async def _wait_and_post():
+        # 60秒待っても画像が来なければテキストだけ投稿
+        await asyncio.sleep(60)
+        if user_id in pending_captions:
+            del pending_captions[user_id]
+            result = await broadcast(text)
+            await reply(reply_token, f"投稿しました！\n\n{result}")
 
     async def _run():
-        result = await broadcast(text)
-        await reply(event.reply_token, f"投稿しました！\n\n{result}")
+        # 前の待機タスクがあればキャンセル
+        if user_id in pending_captions:
+            pending_captions[user_id]["task"].cancel()
+
+        task = asyncio.create_task(_wait_and_post())
+        pending_captions[user_id] = {"text": text, "reply_token": reply_token, "task": task}
+        await reply(reply_token, "テキストを受け取りました！\n60秒以内に画像を送ると一緒に投稿します📸\n画像なしでよければそのまま待ってください⏳")
 
     asyncio.create_task(_run())
 
@@ -102,12 +120,23 @@ def handle_text(event: MessageEvent):
 @handler.add(MessageEvent, message=ImageMessageContent)
 def handle_image(event: MessageEvent):
     message_id = event.message.id
+    user_id = event.source.user_id
+    reply_token = event.reply_token
 
     async def _run():
         image_data = await get_image_bytes(message_id)
-        caption = ""  # 画像のみの場合はキャプションなし
+
+        # キャプション待機中のテキストがあれば使う
+        if user_id in pending_captions:
+            caption = pending_captions[user_id]["text"]
+            pending_captions[user_id]["task"].cancel()
+            del pending_captions[user_id]
+        else:
+            caption = ""
+
         result = await broadcast(caption, image_data)
-        await reply(event.reply_token, f"画像を投稿しました！\n\n{result}")
+        label = "テキスト＋画像を投稿しました！" if caption else "画像を投稿しました！"
+        await reply(reply_token, f"{label}\n\n{result}")
 
     asyncio.create_task(_run())
 
