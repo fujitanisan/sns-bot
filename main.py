@@ -30,6 +30,20 @@ handler = WebhookHandler(os.environ["LINE_CHANNEL_SECRET"])
 pending_captions: dict = {}
 
 
+def extract_alt(text: str) -> tuple[str, str]:
+    """テキストから「ALT:」で始まる行を取り出し、(本文, ALTテキスト) を返す"""
+    lines = text.splitlines()
+    body_lines = []
+    alt_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.lower().startswith("alt:") or stripped.lower().startswith("alt："):
+            alt_lines.append(stripped[4:].strip())
+        else:
+            body_lines.append(line)
+    return "\n".join(body_lines).strip(), " ".join(alt_lines)
+
+
 async def reply(reply_token: str, text: str):
     async with AsyncApiClient(configuration) as api_client:
         line_api = AsyncMessagingApi(api_client)
@@ -48,7 +62,7 @@ async def get_image_bytes(message_id: str) -> bytes:
         return content
 
 
-async def broadcast(text: str, image_data: bytes | None = None) -> str:
+async def broadcast(text: str, image_data: bytes | None = None, alt: str = "") -> str:
     enabled = {
         "Bluesky": "BLUESKY_HANDLE" in os.environ and os.environ.get("BLUESKY_HANDLE", ""),
         "X": "X_API_KEY" in os.environ and os.environ.get("X_API_KEY", ""),
@@ -58,13 +72,13 @@ async def broadcast(text: str, image_data: bytes | None = None) -> str:
 
     tasks = []
     if enabled["Bluesky"]:
-        tasks.append(("Bluesky", asyncio.to_thread(bluesky.post, text, image_data)))
+        tasks.append(("Bluesky", asyncio.to_thread(bluesky.post, text, image_data, "image/jpeg", alt)))
     if enabled["X"]:
-        tasks.append(("X", asyncio.to_thread(twitter.post, text, image_data)))
+        tasks.append(("X", asyncio.to_thread(twitter.post, text, image_data, "image/jpeg", alt)))
     if enabled["Threads"]:
-        tasks.append(("Threads", asyncio.to_thread(threads.post, text, image_data)))
+        tasks.append(("Threads", asyncio.to_thread(threads.post, text, image_data, "image/jpeg", alt)))
     if enabled["Mastodon"]:
-        tasks.append(("Mastodon", asyncio.to_thread(mastodon.post, text, image_data)))
+        tasks.append(("Mastodon", asyncio.to_thread(mastodon.post, text, image_data, "image/jpeg", alt)))
 
     results = []
     for name, coro in tasks:
@@ -98,21 +112,28 @@ def handle_text(event: MessageEvent):
     reply_token = event.reply_token
 
     async def _wait_and_post():
-        # 60秒待っても画像が来なければテキストだけ投稿
-        await asyncio.sleep(60)
-        if user_id in pending_captions:
-            del pending_captions[user_id]
-            result = await broadcast(text)
-            await reply(reply_token, f"投稿しました！\n\n{result}")
+        try:
+            await asyncio.sleep(60)
+            if user_id in pending_captions:
+                del pending_captions[user_id]
+                body, _ = extract_alt(text)
+                result = await broadcast(body)
+                print(f"[TEXT] 投稿完了: {result}")
+        except Exception as e:
+            print(f"[TEXT] エラー: {e}")
+            traceback.print_exc()
 
     async def _run():
-        # 前の待機タスクがあればキャンセル
-        if user_id in pending_captions:
-            pending_captions[user_id]["task"].cancel()
+        try:
+            if user_id in pending_captions:
+                pending_captions[user_id]["task"].cancel()
 
-        task = asyncio.create_task(_wait_and_post())
-        pending_captions[user_id] = {"text": text, "reply_token": reply_token, "task": task}
-        await reply(reply_token, "テキストを受け取りました！\n60秒以内に画像を送ると一緒に投稿します📸\n画像なしでよければそのまま待ってください⏳")
+            task = asyncio.create_task(_wait_and_post())
+            pending_captions[user_id] = {"text": text, "task": task}
+            await reply(reply_token, "テキストを受け取りました！\n60秒以内に画像を送ると一緒に投稿します📸\n画像なしでよければそのまま待ってください⏳")
+        except Exception as e:
+            print(f"[TEXT] _run エラー: {e}")
+            traceback.print_exc()
 
     asyncio.create_task(_run())
 
@@ -124,19 +145,27 @@ def handle_image(event: MessageEvent):
     reply_token = event.reply_token
 
     async def _run():
-        image_data = await get_image_bytes(message_id)
+        try:
+            image_data = await get_image_bytes(message_id)
 
-        # キャプション待機中のテキストがあれば使う
-        if user_id in pending_captions:
-            caption = pending_captions[user_id]["text"]
-            pending_captions[user_id]["task"].cancel()
-            del pending_captions[user_id]
-        else:
-            caption = ""
+            if user_id in pending_captions:
+                caption = pending_captions[user_id]["text"]
+                pending_captions[user_id]["task"].cancel()
+                del pending_captions[user_id]
+            else:
+                caption = ""
 
-        result = await broadcast(caption, image_data)
-        label = "テキスト＋画像を投稿しました！" if caption else "画像を投稿しました！"
-        await reply(reply_token, f"{label}\n\n{result}")
+            caption, alt = extract_alt(caption)
+            result = await broadcast(caption, image_data, alt)
+            label = "テキスト＋画像を投稿しました！" if caption else "画像を投稿しました！"
+            await reply(reply_token, f"{label}\n\n{result}")
+        except Exception as e:
+            print(f"[IMAGE] エラー: {e}")
+            traceback.print_exc()
+            try:
+                await reply(reply_token, f"投稿エラー: {e}")
+            except Exception:
+                pass
 
     asyncio.create_task(_run())
 

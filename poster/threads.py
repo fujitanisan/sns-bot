@@ -1,4 +1,5 @@
 import os
+import time
 import httpx
 
 import image_store
@@ -6,7 +7,7 @@ import image_store
 BASE = "https://graph.threads.net/v1.0"
 
 
-def post(text: str, image_data: bytes | None = None, image_mime: str = "image/jpeg") -> dict:
+def post(text: str, image_data: bytes | None = None, image_mime: str = "image/jpeg", alt: str = "") -> dict:
     token = os.environ["THREADS_ACCESS_TOKEN"]
     user_id = os.environ["THREADS_USER_ID"]
 
@@ -24,6 +25,8 @@ def post(text: str, image_data: bytes | None = None, image_mime: str = "image/jp
             "text": text,
             "access_token": token,
         }
+        if alt:
+            params["alt_text"] = alt
     else:
         params = {"media_type": "TEXT", "text": text, "access_token": token}
 
@@ -32,7 +35,24 @@ def post(text: str, image_data: bytes | None = None, image_mime: str = "image/jp
     r.raise_for_status()
     container_id = r.json()["id"]
 
-    # ステップ2: 公開
+    # ステップ2: 画像処理の完了を待つ（最大30秒）
+    if image_data:
+        for _ in range(15):
+            status_r = httpx.get(
+                f"{BASE}/{container_id}",
+                params={"fields": "status", "access_token": token},
+            )
+            status_r.raise_for_status()
+            status = status_r.json().get("status")
+            if status == "FINISHED":
+                break
+            if status == "ERROR":
+                raise RuntimeError("Threads 画像処理エラー")
+            time.sleep(2)
+        else:
+            raise RuntimeError("Threads 画像処理タイムアウト（30秒）")
+
+    # ステップ3: 公開
     r2 = httpx.post(
         f"{BASE}/{user_id}/threads_publish",
         params={"creation_id": container_id, "access_token": token},

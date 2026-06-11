@@ -18,7 +18,7 @@ def _build_text(text: str) -> client_utils.TextBuilder:
     return builder
 
 
-def post(text: str, image_data: bytes | None = None, image_mime: str = "image/jpeg") -> dict:
+def post(text: str, image_data: bytes | None = None, image_mime: str = "image/jpeg", alt: str = "") -> dict:
     client = Client()
     client.login(
         os.environ["BLUESKY_HANDLE"],
@@ -32,7 +32,7 @@ def post(text: str, image_data: bytes | None = None, image_mime: str = "image/jp
         embed = models.AppBskyEmbedImages.Main(
             images=[
                 models.AppBskyEmbedImages.Image(
-                    alt="",
+                    alt=alt,
                     image=upload.blob,
                 )
             ]

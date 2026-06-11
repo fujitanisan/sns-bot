@@ -2,7 +2,7 @@ import os
 import httpx
 
 
-def post(text: str, image_data: bytes | None = None, image_mime: str = "image/jpeg") -> dict:
+def post(text: str, image_data: bytes | None = None, image_mime: str = "image/jpeg", alt: str = "") -> dict:
     token = os.environ["MASTODON_ACCESS_TOKEN"]
     instance = os.environ.get("MASTODON_INSTANCE_URL", "https://mastodon.social").rstrip("/")
     headers = {"Authorization": f"Bearer {token}"}
@@ -11,10 +11,12 @@ def post(text: str, image_data: bytes | None = None, image_mime: str = "image/jp
     if image_data:
         # メディアアップロード
         files = {"file": ("image.jpg", image_data, image_mime)}
+        upload_data = {"description": alt} if alt else {}
         r = httpx.post(
             f"{instance}/api/v2/media",
             headers=headers,
             files=files,
+            data=upload_data,
             timeout=30,
         )
         r.raise_for_status()

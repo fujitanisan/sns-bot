@@ -21,7 +21,7 @@ def _api_v1():
     return tweepy.API(auth)
 
 
-def post(text: str, image_data: bytes | None = None, image_mime: str = "image/jpeg") -> dict:
+def post(text: str, image_data: bytes | None = None, image_mime: str = "image/jpeg", alt: str = "") -> dict:
     client = _client_v2()
 
     if image_data:
@@ -34,6 +34,8 @@ def post(text: str, image_data: bytes | None = None, image_mime: str = "image/jp
             tmp_path = f.name
         try:
             media = api.media_upload(tmp_path)
+            if alt:
+                api.create_media_metadata(media.media_id, alt)
             client.create_tweet(text=text, media_ids=[media.media_id])
         finally:
             _os.unlink(tmp_path)
