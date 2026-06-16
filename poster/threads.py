@@ -31,16 +31,17 @@ def post(text: str, image_data: bytes | None = None, image_mime: str = "image/jp
         params = {"media_type": "TEXT", "text": text, "access_token": token}
 
     # ステップ1: コンテナ作成
-    r = httpx.post(f"{BASE}/{user_id}/threads", params=params)
+    r = httpx.post(f"{BASE}/{user_id}/threads", params=params, timeout=60)
     r.raise_for_status()
     container_id = r.json()["id"]
 
-    # ステップ2: 画像処理の完了を待つ（最大30秒）
+    # ステップ2: 画像処理の完了を待つ（最大60秒）
     if image_data:
-        for _ in range(15):
+        for _ in range(20):
             status_r = httpx.get(
                 f"{BASE}/{container_id}",
                 params={"fields": "status", "access_token": token},
+                timeout=30,
             )
             status_r.raise_for_status()
             status = status_r.json().get("status")
@@ -48,15 +49,25 @@ def post(text: str, image_data: bytes | None = None, image_mime: str = "image/jp
                 break
             if status == "ERROR":
                 raise RuntimeError("Threads 画像処理エラー")
-            time.sleep(2)
+            time.sleep(3)
         else:
-            raise RuntimeError("Threads 画像処理タイムアウト（30秒）")
+            raise RuntimeError("Threads 画像処理タイムアウト（60秒）")
 
-    # ステップ3: 公開
-    r2 = httpx.post(
-        f"{BASE}/{user_id}/threads_publish",
-        params={"creation_id": container_id, "access_token": token},
-    )
-    r2.raise_for_status()
+    # ステップ3: 公開（一時的な失敗に備えてリトライ）
+    last_err = None
+    for attempt in range(3):
+        try:
+            r2 = httpx.post(
+                f"{BASE}/{user_id}/threads_publish",
+                params={"creation_id": container_id, "access_token": token},
+                timeout=60,
+            )
+            r2.raise_for_status()
+            break
+        except httpx.HTTPError as e:
+            last_err = e
+            time.sleep(3)
+    else:
+        raise RuntimeError(f"Threads 公開失敗: {last_err}")
 
     return {"platform": "Threads", "ok": True}
