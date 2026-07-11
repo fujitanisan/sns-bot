@@ -30,10 +30,20 @@ def post(text: str, image_data: bytes | None = None, image_mime: str = "image/jp
     else:
         params = {"media_type": "TEXT", "text": text, "access_token": token}
 
-    # ステップ1: コンテナ作成
-    r = httpx.post(f"{BASE}/{user_id}/threads", params=params, timeout=60)
-    r.raise_for_status()
-    container_id = r.json()["id"]
+    # ステップ1: コンテナ作成（Threads が画像URLを取得できず 500 になることがあるのでリトライ）
+    last_err = None
+    container_id = None
+    for attempt in range(4):
+        try:
+            r = httpx.post(f"{BASE}/{user_id}/threads", params=params, timeout=60)
+            r.raise_for_status()
+            container_id = r.json()["id"]
+            break
+        except httpx.HTTPError as e:
+            last_err = e
+            time.sleep(5)
+    if container_id is None:
+        raise RuntimeError(f"Threads コンテナ作成失敗: {last_err}")
 
     # ステップ2: 画像処理の完了を待つ（最大60秒）
     if image_data:
