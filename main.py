@@ -182,6 +182,24 @@ def debug_threads_test(mode: str = "external"):
     token = os.environ["THREADS_ACCESS_TOKEN"].strip()
     user_id = os.environ["THREADS_USER_ID"].strip()
 
+    if mode == "text":
+        # テキストのみのコンテナ作成（トークン・権限の生存確認）
+        r = httpx.post(
+            f"https://graph.threads.net/v1.0/{user_id}/threads",
+            params={"media_type": "TEXT", "text": "debug", "access_token": token},
+            timeout=60,
+        )
+        return {"mode": mode, "status": r.status_code, "body": r.text}
+
+    if mode == "me":
+        # トークンが誰のものか・有効かを確認
+        r = httpx.get(
+            "https://graph.threads.net/v1.0/me",
+            params={"fields": "id,username", "access_token": token},
+            timeout=60,
+        )
+        return {"mode": mode, "status": r.status_code, "body": r.text}
+
     if mode == "self":
         # Pillow で小さなテスト画像を作り、自前URLで試す
         import io
