@@ -175,8 +175,10 @@ def health():
     return {"status": "ok"}
 
 
-@app.get("/temp-image/{image_id}")
-def temp_image(image_id: str):
+@app.get("/temp-image/{image_name}")
+def temp_image(image_name: str):
+    # ".jpg" などの拡張子付きURLにも対応（Threads の画像取得用）
+    image_id = image_name.rsplit(".", 1)[0]
     data, mime = image_store.get(image_id)
     if data is None:
         raise HTTPException(status_code=404, detail="Not found")

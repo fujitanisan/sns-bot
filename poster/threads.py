@@ -41,7 +41,8 @@ def post(text: str, image_data: bytes | None = None, image_mime: str = "image/jp
         base_url = os.environ.get("APP_BASE_URL", "").rstrip("/")
         if not base_url:
             raise RuntimeError("APP_BASE_URL 環境変数が未設定です")
-        image_url = f"{base_url}/temp-image/{image_id}"
+        # Meta の画像取得は拡張子なしURLを拒否することがあるため .jpg を付ける
+        image_url = f"{base_url}/temp-image/{image_id}.jpg"
 
         params = {
             "media_type": "IMAGE",
