@@ -1,5 +1,6 @@
 import os
 import asyncio
+import datetime
 import traceback
 from dotenv import load_dotenv
 
@@ -173,6 +174,80 @@ def handle_image(event: MessageEvent):
 @app.get("/")
 def health():
     return {"status": "ok"}
+
+
+# ---- Threads トークン自動更新 ----
+# Threads の長期トークンは60日で失効するため、7日ごとに更新APIで延命する。
+# 更新後は Render の環境変数にも保存し、再起動時に古いトークンへ巻き戻らないようにする。
+
+TOKEN_REFRESH_DAYS = 7
+
+
+def _save_env_to_render(env_vars: dict):
+    import httpx
+    api_key = os.environ.get("RENDER_API_KEY", "").strip()
+    service_id = os.environ.get("RENDER_SERVICE_ID", "").strip()
+    if not api_key or not service_id:
+        print("[TOKEN] RENDER_API_KEY / RENDER_SERVICE_ID が未設定。Renderへの保存をスキップ（再起動でトークンが巻き戻るので設定推奨）")
+        return
+    for key, value in env_vars.items():
+        r = httpx.put(
+            f"https://api.render.com/v1/services/{service_id}/env-vars/{key}",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={"value": value},
+            timeout=30,
+        )
+        r.raise_for_status()
+    print("[TOKEN] Render の環境変数に保存しました")
+
+
+def _maybe_refresh_threads_token():
+    import httpx
+    token = os.environ.get("THREADS_ACCESS_TOKEN", "").strip()
+    if not token:
+        return
+
+    refreshed_at = os.environ.get("THREADS_TOKEN_REFRESHED_AT", "").strip()
+    today = datetime.date.today()
+    if refreshed_at:
+        try:
+            last = datetime.date.fromisoformat(refreshed_at)
+            if (today - last).days < TOKEN_REFRESH_DAYS:
+                return
+        except ValueError:
+            pass
+
+    r = httpx.get(
+        "https://graph.threads.net/refresh_access_token",
+        params={"grant_type": "th_refresh_token", "access_token": token},
+        timeout=60,
+    )
+    r.raise_for_status()
+    new_token = r.json()["access_token"]
+
+    os.environ["THREADS_ACCESS_TOKEN"] = new_token
+    os.environ["THREADS_TOKEN_REFRESHED_AT"] = today.isoformat()
+    print(f"[TOKEN] Threads トークンを更新しました ({today})")
+    _save_env_to_render({
+        "THREADS_ACCESS_TOKEN": new_token,
+        "THREADS_TOKEN_REFRESHED_AT": today.isoformat(),
+    })
+
+
+async def _token_refresh_loop():
+    await asyncio.sleep(30)  # 起動直後の混雑を避ける
+    while True:
+        try:
+            await asyncio.to_thread(_maybe_refresh_threads_token)
+        except Exception as e:
+            print(f"[TOKEN] 更新エラー（次回リトライ）: {e}")
+            traceback.print_exc()
+        await asyncio.sleep(24 * 3600)  # 1日1回チェック
+
+
+@app.on_event("startup")
+async def _startup():
+    asyncio.create_task(_token_refresh_loop())
 
 
 @app.get("/temp-image/{image_name}")
