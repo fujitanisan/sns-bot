@@ -65,7 +65,11 @@ def post(text: str, image_data: bytes | None = None, image_mime: str = "image/jp
             container_id = r.json()["id"]
             break
         except httpx.HTTPError as e:
-            last_err = e
+            body = ""
+            if getattr(e, "response", None) is not None:
+                body = e.response.text[:300]
+            # トークンがエラーメッセージに漏れないようマスク
+            last_err = f"{str(e).replace(token, '***')} / 詳細: {body}"
             time.sleep(5)
     if container_id is None:
         raise RuntimeError(f"Threads コンテナ作成失敗: {last_err}")
@@ -100,7 +104,10 @@ def post(text: str, image_data: bytes | None = None, image_mime: str = "image/jp
             r2.raise_for_status()
             break
         except httpx.HTTPError as e:
-            last_err = e
+            body = ""
+            if getattr(e, "response", None) is not None:
+                body = e.response.text[:300]
+            last_err = f"{str(e).replace(token, '***')} / 詳細: {body}"
             time.sleep(3)
     else:
         raise RuntimeError(f"Threads 公開失敗: {last_err}")

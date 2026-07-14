@@ -175,6 +175,39 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/debug/threads-test")
+def debug_threads_test(mode: str = "external"):
+    """Threads コンテナ作成の切り分けテスト（公開はしないので実投稿されない）"""
+    import httpx
+    token = os.environ["THREADS_ACCESS_TOKEN"].strip()
+    user_id = os.environ["THREADS_USER_ID"].strip()
+
+    if mode == "self":
+        # Pillow で小さなテスト画像を作り、自前URLで試す
+        import io
+        from PIL import Image
+        buf = io.BytesIO()
+        Image.new("RGB", (800, 600), (200, 100, 50)).save(buf, format="JPEG")
+        image_id = image_store.add(buf.getvalue(), "image/jpeg")
+        base_url = os.environ.get("APP_BASE_URL", "").strip().rstrip("/")
+        image_url = f"{base_url}/temp-image/{image_id}.jpg"
+    else:
+        # 確実に取得できる外部の画像URLで試す
+        image_url = "https://www.gstatic.com/webp/gallery/1.jpg"
+
+    r = httpx.post(
+        f"https://graph.threads.net/v1.0/{user_id}/threads",
+        params={
+            "media_type": "IMAGE",
+            "image_url": image_url,
+            "text": "debug",
+            "access_token": token,
+        },
+        timeout=60,
+    )
+    return {"mode": mode, "image_url": image_url, "status": r.status_code, "body": r.text}
+
+
 @app.get("/temp-image/{image_name}")
 def temp_image(image_name: str):
     # ".jpg" などの拡張子付きURLにも対応（Threads の画像取得用）
