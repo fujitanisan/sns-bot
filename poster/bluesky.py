@@ -21,8 +21,8 @@ def _build_text(text: str) -> client_utils.TextBuilder:
 def post(text: str, image_data: bytes | None = None, image_mime: str = "image/jpeg", alt: str = "") -> dict:
     client = Client()
     client.login(
-        os.environ["BLUESKY_HANDLE"],
-        os.environ["BLUESKY_APP_PASSWORD"],
+        os.environ["BLUESKY_HANDLE"].strip(),
+        os.environ["BLUESKY_APP_PASSWORD"].strip(),
     )
 
     rich_text = _build_text(text)

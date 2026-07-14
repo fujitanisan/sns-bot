@@ -3,8 +3,8 @@ import httpx
 
 
 def post(text: str, image_data: bytes | None = None, image_mime: str = "image/jpeg", alt: str = "") -> dict:
-    token = os.environ["MASTODON_ACCESS_TOKEN"]
-    instance = os.environ.get("MASTODON_INSTANCE_URL", "https://mastodon.social").rstrip("/")
+    token = os.environ["MASTODON_ACCESS_TOKEN"].strip()
+    instance = os.environ.get("MASTODON_INSTANCE_URL", "https://mastodon.social").strip().rstrip("/")
     headers = {"Authorization": f"Bearer {token}"}
 
     media_ids = []

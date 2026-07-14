@@ -30,8 +30,9 @@ def _normalize_image(image_data: bytes) -> tuple[bytes, str]:
 
 
 def post(text: str, image_data: bytes | None = None, image_mime: str = "image/jpeg", alt: str = "") -> dict:
-    token = os.environ["THREADS_ACCESS_TOKEN"]
-    user_id = os.environ["THREADS_USER_ID"]
+    # 環境変数にコピペ由来の改行・空白が混入することがあるので strip する
+    token = os.environ["THREADS_ACCESS_TOKEN"].strip()
+    user_id = os.environ["THREADS_USER_ID"].strip()
 
     if image_data:
         # Threads 向けに縮小・JPEG化してから一時ストアに保存

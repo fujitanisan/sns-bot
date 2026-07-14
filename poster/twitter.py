@@ -2,22 +2,27 @@ import os
 import tweepy
 
 
+def _keys():
+    return (
+        os.environ["X_API_KEY"].strip(),
+        os.environ["X_API_SECRET"].strip(),
+        os.environ["X_ACCESS_TOKEN"].strip(),
+        os.environ["X_ACCESS_TOKEN_SECRET"].strip(),
+    )
+
+
 def _client_v2():
+    key, secret, at, ats = _keys()
     return tweepy.Client(
-        consumer_key=os.environ["X_API_KEY"],
-        consumer_secret=os.environ["X_API_SECRET"],
-        access_token=os.environ["X_ACCESS_TOKEN"],
-        access_token_secret=os.environ["X_ACCESS_TOKEN_SECRET"],
+        consumer_key=key,
+        consumer_secret=secret,
+        access_token=at,
+        access_token_secret=ats,
     )
 
 
 def _api_v1():
-    auth = tweepy.OAuth1UserHandler(
-        os.environ["X_API_KEY"],
-        os.environ["X_API_SECRET"],
-        os.environ["X_ACCESS_TOKEN"],
-        os.environ["X_ACCESS_TOKEN_SECRET"],
-    )
+    auth = tweepy.OAuth1UserHandler(*_keys())
     return tweepy.API(auth)
 
 
