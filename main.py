@@ -184,12 +184,15 @@ TOKEN_REFRESH_DAYS = 7
 
 
 def _save_env_to_render(env_vars: dict):
+    """Render の環境変数を書き換える。トークンを先、日付を後に保存する。"""
     import httpx
     api_key = os.environ.get("RENDER_API_KEY", "").strip()
     service_id = os.environ.get("RENDER_SERVICE_ID", "").strip()
     if not api_key or not service_id:
-        print("[TOKEN] RENDER_API_KEY / RENDER_SERVICE_ID が未設定。Renderへの保存をスキップ（再起動でトークンが巻き戻るので設定推奨）")
+        print("[TOKEN] RENDER_API_KEY / RENDER_SERVICE_ID が未設定のため保存できません。"
+              "再起動のたびに古いトークンへ戻るので、Renderに設定してください")
         return
+
     for key, value in env_vars.items():
         r = httpx.put(
             f"https://api.render.com/v1/services/{service_id}/env-vars/{key}",
@@ -197,8 +200,10 @@ def _save_env_to_render(env_vars: dict):
             json={"value": value},
             timeout=30,
         )
-        r.raise_for_status()
-    print("[TOKEN] Render の環境変数に保存しました")
+        if r.status_code >= 400:
+            # 401/403ならAPIキー、404ならサービスIDが怪しい
+            raise RuntimeError(f"Render保存失敗 {key}: HTTP {r.status_code} {r.text[:200]}")
+        print(f"[TOKEN] Render に {key} を保存しました")
 
 
 def _maybe_refresh_threads_token():
@@ -212,17 +217,21 @@ def _maybe_refresh_threads_token():
     if refreshed_at:
         try:
             last = datetime.date.fromisoformat(refreshed_at)
-            if (today - last).days < TOKEN_REFRESH_DAYS:
+            days = (today - last).days
+            if days < TOKEN_REFRESH_DAYS:
+                print(f"[TOKEN] 前回更新から{days}日。{TOKEN_REFRESH_DAYS}日経ったら更新します")
                 return
         except ValueError:
-            pass
+            print(f"[TOKEN] THREADS_TOKEN_REFRESHED_AT の形式が不正（{refreshed_at}）。更新を試みます")
 
     r = httpx.get(
         "https://graph.threads.net/refresh_access_token",
         params={"grant_type": "th_refresh_token", "access_token": token},
         timeout=60,
     )
-    r.raise_for_status()
+    if r.status_code >= 400:
+        # 発行から24時間以内のトークンは更新できない（Metaの仕様）
+        raise RuntimeError(f"Threads更新失敗: HTTP {r.status_code} {r.text[:200]}")
     new_token = r.json()["access_token"]
 
     os.environ["THREADS_ACCESS_TOKEN"] = new_token
