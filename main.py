@@ -126,8 +126,15 @@ def handle_text(event: MessageEvent):
 
     async def _run():
         try:
+            # 待機中のテキストがあれば、それは画像なし確定なので先に投稿する
+            # （破棄すると連投したときに前の投稿が消えてしまう）
             if user_id in pending_captions:
-                pending_captions[user_id]["task"].cancel()
+                prev = pending_captions.pop(user_id)
+                prev["task"].cancel()
+                prev_body, _ = extract_alt(prev["text"])
+                if prev_body:
+                    result = await broadcast(prev_body)
+                    print(f"[TEXT] 前のテキストを投稿: {result}")
 
             task = asyncio.create_task(_wait_and_post())
             pending_captions[user_id] = {"text": text, "task": task}
